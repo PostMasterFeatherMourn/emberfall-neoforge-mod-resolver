@@ -1,0 +1,9 @@
+{
+  "modsFolderPath": "mods",
+  "updatesFolderPath": "updates",
+  "minecraftVersion": "1.21.1",
+  "primaryLoader": "NeoForge",
+  "modrinthApiBaseUrl": "https://api.modrinth.com/v2",
+  "curseForgeApiBaseUrl": "https://api.curseforge.com/v1",
+  "curseForgeApiKey": ""
+}
