@@ -7,5 +7,5 @@ public class LocalMod
     public string DisplayName { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
     public string Loader { get; set; } = string.Empty;
-    public List<string> Dependencies { get; set; } = [];
+    public List<string> Dependencies { get; set; } = new();
 }

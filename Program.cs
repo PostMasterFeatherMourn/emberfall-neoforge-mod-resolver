@@ -11,6 +11,8 @@ public class Program
 {
     private const int CurseForgeMinecraftGameId = 432;
     private const int CurseForgeNeoForgeLoaderType = 6;
+    private static readonly Regex DependencySectionRegex = new(@"\[\[dependencies\.[^\]]+\]\](?<block>[\s\S]*?)(?=\r?\n\[\[|$)", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex DependencyModIdRegex = new(@"modId\s*=\s*""([^""]+)""", RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -170,9 +172,9 @@ public class Program
 
     private static List<string> ExtractTomlDependencies(string content, string modId)
     {
-        var dependencySectionMatches = Regex.Matches(content, @"\[\[dependencies\.[^\]]+\]\](?<block>[\s\S]*?)(?=\r?\n\[\[|$)", RegexOptions.Multiline);
+        var dependencySectionMatches = DependencySectionRegex.Matches(content);
         var values = dependencySectionMatches
-            .SelectMany(section => Regex.Matches(section.Groups["block"].Value, @"modId\s*=\s*""([^""]+)""", RegexOptions.Multiline)
+            .SelectMany(section => DependencyModIdRegex.Matches(section.Groups["block"].Value)
                 .Select(match => match.Groups[1].Value))
             .Where(value => !string.Equals(value, "minecraft", StringComparison.OrdinalIgnoreCase))
             .Where(value => !string.Equals(value, modId, StringComparison.OrdinalIgnoreCase))
@@ -303,7 +305,7 @@ public class Program
 
     private static void StageCandidateMetadataFiles(IEnumerable<CandidateVersion> candidates, string updatesFolder)
     {
-        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var invalidCharacters = Path.GetInvalidFileNameChars().ToHashSet();
         foreach (var candidate in candidates.Where(x => !string.IsNullOrWhiteSpace(x.DownloadUrl)))
         {
             var safeName = new string($"{candidate.ModId}_{candidate.Source}".Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
