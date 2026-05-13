@@ -9,6 +9,8 @@ namespace EmberFallModResolver;
 
 public class Program
 {
+    private const int CurseForgeMinecraftGameId = 432;
+    private const int CurseForgeNeoForgeLoaderType = 6;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -108,14 +110,15 @@ public class Program
                 using var reader = new StreamReader(stream, Encoding.UTF8);
                 var toml = reader.ReadToEnd();
 
+                var modId = ExtractTomlValue(toml, "modId") ?? Path.GetFileNameWithoutExtension(fileName);
                 return new LocalMod
                 {
                     FileName = fileName,
                     Loader = "NeoForge",
-                    ModId = ExtractTomlValue(toml, "modId") ?? Path.GetFileNameWithoutExtension(fileName),
+                    ModId = modId,
                     DisplayName = ExtractTomlValue(toml, "displayName") ?? Path.GetFileNameWithoutExtension(fileName),
                     Version = ExtractTomlValue(toml, "version") ?? "unknown",
-                    Dependencies = ExtractTomlDependencies(toml)
+                    Dependencies = ExtractTomlDependencies(toml, modId)
                 };
             }
 
@@ -165,12 +168,14 @@ public class Program
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    private static List<string> ExtractTomlDependencies(string content)
+    private static List<string> ExtractTomlDependencies(string content, string modId)
     {
-        var dependencyMatches = Regex.Matches(content, @"modId\s*=\s*""([^""]+)""", RegexOptions.Multiline);
-        var values = dependencyMatches
-            .Select(match => match.Groups[1].Value)
+        var dependencySectionMatches = Regex.Matches(content, @"\[\[dependencies\.[^\]]+\]\](?<block>[\s\S]*?)(?=\r?\n\[\[|$)", RegexOptions.Multiline);
+        var values = dependencySectionMatches
+            .SelectMany(section => Regex.Matches(section.Groups["block"].Value, @"modId\s*=\s*""([^""]+)""", RegexOptions.Multiline)
+                .Select(match => match.Groups[1].Value))
             .Where(value => !string.Equals(value, "minecraft", StringComparison.OrdinalIgnoreCase))
+            .Where(value => !string.Equals(value, modId, StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return values;
@@ -180,8 +185,8 @@ public class Program
     {
         try
         {
-            var loaderParameter = Uri.EscapeDataString($"[\"{config.PrimaryLoader.ToLowerInvariant()}\"]");
-            var gameVersionParameter = Uri.EscapeDataString($"[\"{config.MinecraftVersion}\"]");
+            var loaderParameter = Uri.EscapeDataString(JsonSerializer.Serialize(new[] { config.PrimaryLoader.ToLowerInvariant() }));
+            var gameVersionParameter = Uri.EscapeDataString(JsonSerializer.Serialize(new[] { config.MinecraftVersion }));
             var url = $"{config.ModrinthApiBaseUrl}/project/{mod.ModId}/version?loaders={loaderParameter}&game_versions={gameVersionParameter}";
             using var response = await httpClient.GetAsync(url);
             if (!response.IsSuccessStatusCode)
@@ -231,7 +236,7 @@ public class Program
         {
             var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"{config.CurseForgeApiBaseUrl}/mods/search?gameId=432&slug={Uri.EscapeDataString(mod.ModId)}&gameVersion={Uri.EscapeDataString(config.MinecraftVersion)}&modLoaderType=6");
+                $"{config.CurseForgeApiBaseUrl}/mods/search?gameId={CurseForgeMinecraftGameId}&slug={Uri.EscapeDataString(mod.ModId)}&gameVersion={Uri.EscapeDataString(config.MinecraftVersion)}&modLoaderType={CurseForgeNeoForgeLoaderType}");
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Add("x-api-key", config.CurseForgeApiKey);
 
@@ -298,9 +303,10 @@ public class Program
 
     private static void StageCandidateMetadataFiles(IEnumerable<CandidateVersion> candidates, string updatesFolder)
     {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
         foreach (var candidate in candidates.Where(x => !string.IsNullOrWhiteSpace(x.DownloadUrl)))
         {
-            var safeName = $"{candidate.ModId}_{candidate.Source}".Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+            var safeName = new string($"{candidate.ModId}_{candidate.Source}".Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
             var candidatePath = Path.Combine(updatesFolder, $"{safeName}.candidate.txt");
             var content = new StringBuilder()
                 .AppendLine($"source={candidate.Source}")
