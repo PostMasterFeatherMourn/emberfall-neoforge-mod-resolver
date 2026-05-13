@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using EmberFallModResolver.Models;
 
 namespace EmberFallModResolver;
@@ -13,6 +14,7 @@ public class Program
     private const int CurseForgeNeoForgeLoaderType = 6;
     private static readonly Regex DependencySectionRegex = new(@"\[\[dependencies\.[^\]]+\]\](?<block>[\s\S]*?)(?=\r?\n\[\[|$)", RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly Regex DependencyModIdRegex = new(@"modId\s*=\s*""([^""]+)""", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly ConcurrentDictionary<string, Regex> TomlValueRegexByKey = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -165,7 +167,9 @@ public class Program
 
     private static string? ExtractTomlValue(string content, string key)
     {
-        var regex = new Regex($@"{Regex.Escape(key)}\s*=\s*""([^""]+)""", RegexOptions.Multiline);
+        var regex = TomlValueRegexByKey.GetOrAdd(
+            key,
+            static cacheKey => new Regex($@"{Regex.Escape(cacheKey)}\s*=\s*""([^""]+)""", RegexOptions.Multiline | RegexOptions.Compiled));
         var match = regex.Match(content);
         return match.Success ? match.Groups[1].Value : null;
     }
@@ -308,7 +312,7 @@ public class Program
         var invalidCharacters = Path.GetInvalidFileNameChars().ToHashSet();
         foreach (var candidate in candidates.Where(x => !string.IsNullOrWhiteSpace(x.DownloadUrl)))
         {
-            var safeName = new string($"{candidate.ModId}_{candidate.Source}".Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
+            var safeName = SanitizeFileName($"{candidate.ModId}_{candidate.Source}", invalidCharacters);
             var candidatePath = Path.Combine(updatesFolder, $"{safeName}.candidate.txt");
             var content = new StringBuilder()
                 .AppendLine($"source={candidate.Source}")
@@ -319,5 +323,10 @@ public class Program
                 .ToString();
             File.WriteAllText(candidatePath, content);
         }
+    }
+
+    private static string SanitizeFileName(string value, HashSet<char> invalidCharacters)
+    {
+        return new string(value.Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
     }
 }

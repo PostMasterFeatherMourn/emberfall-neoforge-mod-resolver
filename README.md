@@ -19,7 +19,7 @@ It is **not** a launcher, public redistribution platform, mirror, or hosting ser
 ## Safety guarantees
 
 - Never modifies or deletes files in the active mods folder automatically
-- Reads CurseForge API keys from `CURSEFORGE_API_KEY`
+- Reads CurseForge API keys from the `CURSEFORGE_API_KEY` environment variable
 - Keeps `curseForgeApiKey` blank in the example config
 - Never prints API keys to console or reports
 - Respects author distribution settings and API rules
